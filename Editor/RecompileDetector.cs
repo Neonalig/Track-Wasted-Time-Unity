@@ -3,176 +3,181 @@ using UnityEngine;
 using System.IO;
 using System.Linq;
 using System.Collections.Generic;
-using static AdvancedCauseDetector;
 using System;
 
-[InitializeOnLoad]
-public static class AdvancedCauseDetector
+namespace GameDevBox.TrackWastedTime.Editor
 {
-    private static Dictionary<string, long> lastScriptTimestamps;
-    private static List<string> recentlyChangedScripts = new List<string>();
-    private static DateTime lastCheckTime;
-    private static bool wasPlaying = false;
-
-    // Common causes we can detect
-    public enum RecompileCause
+    [InitializeOnLoad]
+    public static class RecompileDetector
     {
-        ScriptModification,
-        AssetImport,
-        AssemblyDefinitionChange,
-        PlayModeEnter,
-        PlayModeExit,
-        ScriptCompilationError,
-        EditorPrefsChange,
-        ManualRefresh,
-        Unknown
-    }
+        private static Dictionary<string, long> lastScriptTimestamps;
+        private static List<string> recentlyChangedScripts = new List<string>();
+        private static DateTime lastCheckTime;
+        private static bool wasPlaying = false;
 
-    public enum DomainReloadCause
-    {
-        PlayModeEnter,
-        PlayModeExit,
-        ScriptModification,
-        AssemblyReload,
-        EditorWindowFocus,
-        Unknown
-    }
-
-    static AdvancedCauseDetector()
-    {
-        lastScriptTimestamps = GetScriptTimestamps();
-        lastCheckTime = DateTime.Now;
-        wasPlaying = EditorApplication.isPlaying;
-
-        EditorApplication.update += OnEditorUpdate;
-        EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
-        EditorApplication.projectChanged += OnProjectChanged;
-        EditorApplication.delayCall += InitializeAssetTracking;
-    }
-
-    private static void InitializeAssetTracking()
-    {
-        // Set up asset postprocessor for tracking asset changes
-    }
-
-    private static void OnEditorUpdate()
-    {
-        // Check every second for changes
-        if ((DateTime.Now - lastCheckTime).TotalSeconds > 1)
+        // Common causes we can detect
+        public enum RecompileCause
         {
-            DetectScriptChanges();
-            CheckPlayModeTransition();
+            ScriptModification,
+            AssetImport,
+            AssemblyDefinitionChange,
+            PlayModeEnter,
+            PlayModeExit,
+            ScriptCompilationError,
+            EditorPrefsChange,
+            ManualRefresh,
+            Unknown
+        }
+
+        public enum DomainReloadCause
+        {
+            PlayModeEnter,
+            PlayModeExit,
+            ScriptModification,
+            AssemblyReload,
+            EditorWindowFocus,
+            Unknown
+        }
+
+        static RecompileDetector()
+        {
+            lastScriptTimestamps = GetScriptTimestamps();
             lastCheckTime = DateTime.Now;
+            wasPlaying = EditorApplication.isPlaying;
+
+            EditorApplication.update += OnEditorUpdate;
+            EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+            EditorApplication.projectChanged += OnProjectChanged;
+            EditorApplication.delayCall += InitializeAssetTracking;
         }
-    }
 
-    private static void DetectScriptChanges()
-    {
-        var currentTimestamps = GetScriptTimestamps();
-        recentlyChangedScripts.Clear();
-
-        foreach (var pair in currentTimestamps)
+        private static void InitializeAssetTracking()
         {
-            if (!lastScriptTimestamps.ContainsKey(pair.Key) ||
-                lastScriptTimestamps[pair.Key] != pair.Value)
+            // Set up asset postprocessor for tracking asset changes
+        }
+
+        private static void OnEditorUpdate()
+        {
+            // Check every second for changes
+            if ((DateTime.Now - lastCheckTime).TotalSeconds > 1)
             {
-                recentlyChangedScripts.Add(Path.GetFileName(pair.Key));
+                DetectScriptChanges();
+                CheckPlayModeTransition();
+                lastCheckTime = DateTime.Now;
             }
         }
 
-        if (recentlyChangedScripts.Count > 0)
+        private static void DetectScriptChanges()
         {
-            string changedFiles = string.Join(", ", recentlyChangedScripts.Take(3));
-            if (recentlyChangedScripts.Count > 3) changedFiles += ", ...";
+            var currentTimestamps = GetScriptTimestamps();
+            recentlyChangedScripts.Clear();
 
-            TimeWasterHistory.LastRecompileCause =
-                $"Script changes detected in: {changedFiles}";
-            TimeWasterHistory.LastRecompileCauseType = RecompileCause.ScriptModification;
-        }
-
-        lastScriptTimestamps = currentTimestamps;
-    }
-
-    private static Dictionary<string, long> GetScriptTimestamps()
-    {
-        string[] scriptPaths = Directory.GetFiles(Application.dataPath, "*.cs", SearchOption.AllDirectories);
-        return scriptPaths.ToDictionary(
-            path => path,
-            path => File.GetLastWriteTimeUtc(path).Ticks
-        );
-    }
-
-    private static void CheckPlayModeTransition()
-    {
-        bool isPlaying = EditorApplication.isPlaying;
-        if (isPlaying != wasPlaying)
-        {
-            if (isPlaying)
+            foreach (var pair in currentTimestamps)
             {
-                TimeWasterHistory.LastDomainReloadCause = "Entering Play Mode";
-                TimeWasterHistory.LastDomainReloadCauseType = DomainReloadCause.PlayModeEnter;
+                if (!lastScriptTimestamps.ContainsKey(pair.Key) ||
+                    lastScriptTimestamps[pair.Key] != pair.Value)
+                {
+                    recentlyChangedScripts.Add(Path.GetFileName(pair.Key));
+                }
             }
-            else
+
+            if (recentlyChangedScripts.Count > 0)
             {
-                TimeWasterHistory.LastDomainReloadCause = "Exiting Play Mode";
-                TimeWasterHistory.LastDomainReloadCauseType = DomainReloadCause.PlayModeExit;
+                string changedFiles = string.Join(", ", recentlyChangedScripts.Take(3));
+                if (recentlyChangedScripts.Count > 3) changedFiles += ", ...";
+
+                TimeWasterHistory.LastRecompileCause =
+                    $"Script changes detected in: {changedFiles}";
+                TimeWasterHistory.LastRecompileCauseType = RecompileCause.ScriptModification;
             }
-            wasPlaying = isPlaying;
-        }
-    }
 
-    private static void OnPlayModeStateChanged(PlayModeStateChange state)
-    {
-        switch (state)
-        {
-            case PlayModeStateChange.ExitingEditMode:
-                TimeWasterHistory.LastDomainReloadCause = "Preparing to enter Play Mode";
-                break;
-            case PlayModeStateChange.EnteredPlayMode:
-                TimeWasterHistory.LastDomainReloadCause = "Finished entering Play Mode";
-                break;
-            case PlayModeStateChange.ExitingPlayMode:
-                TimeWasterHistory.LastDomainReloadCause = "Preparing to exit Play Mode";
-                break;
-            case PlayModeStateChange.EnteredEditMode:
-                TimeWasterHistory.LastDomainReloadCause = "Finished exiting Play Mode";
-                break;
+            lastScriptTimestamps = currentTimestamps;
         }
-    }
 
-    private static void OnProjectChanged()
-    {
-        // This fires when assets are imported or project structure changes
-        if (!EditorApplication.isCompiling)
+        private static Dictionary<string, long> GetScriptTimestamps()
         {
-            TimeWasterHistory.LastRecompileCause = "Project assets were modified";
+            string[] scriptPaths = Directory.GetFiles(Application.dataPath, "*.cs", SearchOption.AllDirectories);
+            return scriptPaths.ToDictionary(
+                path => path,
+                path => File.GetLastWriteTimeUtc(path).Ticks
+            );
+        }
+
+        private static void CheckPlayModeTransition()
+        {
+            bool isPlaying = EditorApplication.isPlaying;
+            if (isPlaying != wasPlaying)
+            {
+                if (isPlaying)
+                {
+                    TimeWasterHistory.LastDomainReloadCause = "Entering Play Mode";
+                    TimeWasterHistory.LastDomainReloadCauseType = DomainReloadCause.PlayModeEnter;
+                }
+                else
+                {
+                    TimeWasterHistory.LastDomainReloadCause = "Exiting Play Mode";
+                    TimeWasterHistory.LastDomainReloadCauseType = DomainReloadCause.PlayModeExit;
+                }
+                wasPlaying = isPlaying;
+            }
+        }
+
+        private static void OnPlayModeStateChanged(PlayModeStateChange state)
+        {
+            switch (state)
+            {
+                case PlayModeStateChange.ExitingEditMode:
+                    TimeWasterHistory.LastDomainReloadCause = "Preparing to enter Play Mode";
+                    break;
+                case PlayModeStateChange.EnteredPlayMode:
+                    TimeWasterHistory.LastDomainReloadCause = "Finished entering Play Mode";
+                    break;
+                case PlayModeStateChange.ExitingPlayMode:
+                    TimeWasterHistory.LastDomainReloadCause = "Preparing to exit Play Mode";
+                    break;
+                case PlayModeStateChange.EnteredEditMode:
+                    TimeWasterHistory.LastDomainReloadCause = "Finished exiting Play Mode";
+                    break;
+            }
+        }
+
+        private static void OnProjectChanged()
+        {
+            // This fires when assets are imported or project structure changes
+            if (!EditorApplication.isCompiling)
+            {
+                TimeWasterHistory.LastRecompileCause = "Project assets were modified";
+            }
         }
     }
-}
 
 // Enhanced Asset Import Detector
-public class AdvancedAssetTracker : AssetPostprocessor
-{
-    private static void OnPostprocessAllAssets(
-        string[] importedAssets,
-        string[] deletedAssets,
-        string[] movedAssets,
-        string[] movedFromAssetPaths)
+    public class AdvancedAssetTracker : AssetPostprocessor
     {
-        if (importedAssets.Length > 0)
+        private static void OnPostprocessAllAssets(
+            string[] importedAssets,
+            string[] deletedAssets,
+            string[] movedAssets,
+            string[] movedFromAssetPaths
+        )
         {
-            string assetTypes = string.Join(", ",
-                importedAssets.Select(a => Path.GetExtension(a)).Distinct());
-
-            TimeWasterHistory.LastRecompileCause =
-                $"Assets imported ({assetTypes})";
-            TimeWasterHistory.LastRecompileCauseType = RecompileCause.AssetImport;
-
-            // Detect if any asmdef files were changed
-            if (importedAssets.Any(a => a.EndsWith(".asmdef")))
+            if (importedAssets.Length > 0)
             {
-                TimeWasterHistory.LastRecompileCause = "Assembly definition modified";
-                TimeWasterHistory.LastRecompileCauseType = RecompileCause.AssemblyDefinitionChange;
+                string assetTypes = string.Join(
+                    ", ",
+                    importedAssets.Select(a => Path.GetExtension(a)).Distinct()
+                );
+
+                TimeWasterHistory.LastRecompileCause =
+                    $"Assets imported ({assetTypes})";
+                TimeWasterHistory.LastRecompileCauseType = RecompileDetector.RecompileCause.AssetImport;
+
+                // Detect if any asmdef files were changed
+                if (importedAssets.Any(a => a.EndsWith(".asmdef")))
+                {
+                    TimeWasterHistory.LastRecompileCause = "Assembly definition modified";
+                    TimeWasterHistory.LastRecompileCauseType = RecompileDetector.RecompileCause.AssemblyDefinitionChange;
+                }
             }
         }
     }
