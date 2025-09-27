@@ -1,0 +1,27 @@
+{
+  "name": "com.gamedevbox.track-wasted-time",
+  "displayName": "Track Wasted Time",
+  "version": "1.0.0",
+  "description": "A Unity Editor tool that tracks compilation and domain reload times to help identify performance bottlenecks in your development workflow. Features advanced cause detection, history tracking, and detailed analytics.",
+  "unity": "2019.4",
+  "unityRelease": "0f1",
+  "keywords": [
+    "editor",
+    "tools",
+    "compilation",
+    "performance",
+    "analytics",
+    "development",
+    "productivity"
+  ],
+  "author": {
+    "name": "GameDevBox",
+    "url": "https://www.youtube.com/@GameDevBox"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GameDevBox/Track-Wasted-Time-Unity.git"
+  },
+  "license": "MIT",
+  "samples": []
+}
